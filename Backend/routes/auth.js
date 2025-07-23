@@ -1,7 +1,7 @@
 // 📁 backend/routes/auth.js
 const express = require('express');
 const router = express.Router();
-const { generateOTP, sendOTP } = require('../utils/otp');
+const { generateOTP, sendOTP, maskEmail, maskPhone } = require('../utils/otp');
 const { createJWT, verifyJWT } = require('../utils/jwt');
 
 let otpStore = {}; // In-memory OTP store
@@ -31,11 +31,17 @@ router.post('/send-otp', async (req, res) => {
   otpStore[cardNumber] = { otp, timestamp: Date.now() };
   console.log("***********", otp)
   await sendOTP(user.email, user.phone, otp);
-  res.json({ success: true, message: 'OTP sent to email and phone.' });
+
+  res.json({ 
+    success: true, 
+    message: 'OTP sent to email and phone.',
+    maskedMail: maskEmail(user.email),
+    maskedPhone: user.phone && maskPhone(user.phone) || ''
+ });
 });
 
 // Step 2: Verify OTP and return personal info
-router.post('/verify-otp', (req, res) => {
+router.post('/verify-otp-fetch-data', (req, res) => {
   const { cardNumber, otp } = req.body;
   const record = otpStore[cardNumber];
   const user = userDatabase[cardNumber];
@@ -43,9 +49,17 @@ router.post('/verify-otp', (req, res) => {
   if (!record || record.otp !== otp) {
     return res.status(401).json({ success: false, message: 'Invalid OTP' });
   }
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
 
+  const maskedUser ={
+    ...user,
+    email: maskEmail(user.email),
+    phone: maskPhone(user.phone)
+  }
   const token = createJWT({ cardNumber });
-  return res.json({ success: true, token, data: user });
+  return res.json({ success: true, token, data: maskedUser });
 });
 
 // Optional protected route
